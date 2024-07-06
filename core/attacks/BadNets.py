@@ -13,6 +13,8 @@ import PIL
 from PIL import Image
 from torchvision.transforms import functional as F
 from torchvision.transforms import Compose
+from torchvision.datasets import ImageFolder
+from classimagenet100 import ImageNet100
 
 from .base import *
 
@@ -195,7 +197,43 @@ class AddCIFAR10Trigger(AddTrigger):
         img = Image.fromarray(img.permute(1, 2, 0).numpy())
         return img
 
+class AddImageNet100Trigger(AddTrigger):
+    """Add watermarked trigger to ImageNet100 image.
 
+    Args:
+        pattern (None | torch.Tensor): shape (3, 32, 32) or (32, 32).
+        weight (None | torch.Tensor): shape (3, 32, 32) or (32, 32).
+    """
+
+    def __init__(self, pattern, weight):
+        super(AddImageNet100Trigger, self).__init__()
+
+        if pattern is None:
+            self.pattern = torch.zeros((1, 32, 32), dtype=torch.uint8)
+            self.pattern[0, -7:, -7:] = 255
+        else:
+            self.pattern = pattern
+            if self.pattern.dim() == 2:
+                self.pattern = self.pattern.unsqueeze(0)
+
+        if weight is None:
+            self.weight = torch.zeros((1, 32, 32), dtype=torch.float32)
+            self.weight[0, -7:, -7:] = 1.0
+        else:
+            self.weight = weight
+            if self.weight.dim() == 2:
+                self.weight = self.weight.unsqueeze(0)
+
+        # Accelerated calculation
+        self.res = self.weight * self.pattern
+        self.weight = 1.0 - self.weight
+
+    def __call__(self, img):
+        img = F.pil_to_tensor(img)
+        img = self.add_trigger(img)
+        img = Image.fromarray(img.permute(1, 2, 0).numpy())
+        return img
+    
 class ModifyTarget:
     def __init__(self, y_target):
         self.y_target = y_target
@@ -375,7 +413,187 @@ class PoisonedCIFAR10(CIFAR10):
 
         return img, target
 
+'''class PoisonedImageNet100(ImageNet100):
+    def __init__(self,
+                 benign_dataset,
+                 y_target,
+                 poisoned_rate,
+                 pattern,
+                 weight,
+                 poisoned_transform_index,
+                 poisoned_target_transform_index):
+        super(PoisonedImageNet100, self).__init__(
+            benign_dataset.root,
+            benign_dataset.train,
+            benign_dataset.transform,
+            benign_dataset.target_transform
+            )
+        total_num = len(benign_dataset)
+        poisoned_num = int(total_num * poisoned_rate)
+        assert poisoned_num >= 0, 'poisoned_num should greater than or equal to zero.'
+        tmp_list = list(range(total_num))
+        random.shuffle(tmp_list)
+        self.poisoned_set = frozenset(tmp_list[:poisoned_num])
 
+        # Add trigger to images
+        if self.transform is None:
+            self.poisoned_transform = Compose([])
+        else:
+            self.poisoned_transform = copy.deepcopy(self.transform)
+        self.poisoned_transform.transforms.insert(poisoned_transform_index, AddCIFAR10Trigger(pattern, weight))
+
+        # Modify labels
+        if self.target_transform is None:
+            self.poisoned_target_transform = Compose([])
+        else:
+            self.poisoned_target_transform = copy.deepcopy(self.target_transform)
+        self.poisoned_target_transform.transforms.insert(poisoned_target_transform_index, ModifyTarget(y_target))
+
+    def __getitem__(self, index):
+        img, target = self.data[index], int(self.targets[index])
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if index in self.poisoned_set:
+            img = self.poisoned_transform(img)
+            target = self.poisoned_target_transform(target)
+        else:
+            if self.transform is not None:
+                img = self.transform(img)
+
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+
+        return img, target'''
+'''class PoisonedImageNet100(ImageNet100):
+    def __init__(self,
+                 root,
+                 train=True,
+                 transform=None,
+                 target_transform=None,
+                 y_target=None,
+                 poisoned_rate=0.05,
+                 pattern=None,
+                 weight=None,
+                 poisoned_transform_index=0,
+                 poisoned_target_transform_index=0):
+        super(PoisonedImageNet100, self).__init__(root=root, train=train, transform=transform, target_transform=target_transform)
+        
+        self.y_target = y_target
+        self.poisoned_rate = poisoned_rate
+        self.pattern = pattern
+        self.weight = weight
+        self.poisoned_transform_index = poisoned_transform_index
+        self.poisoned_target_transform_index = poisoned_target_transform_index
+        
+        total_num = len(self.train_folders) if self.train else len(self.val_folder)
+        poisoned_num = int(total_num * self.poisoned_rate)
+        assert poisoned_num >= 0, 'poisoned_num should greater than or equal to zero.'
+        
+        tmp_list = list(range(total_num))
+        random.shuffle(tmp_list)
+        
+        self.poisoned_set = frozenset(tmp_list[:poisoned_num])
+
+        # Add trigger to images
+        if self.transform is None:
+            self.poisoned_transform = Compose([])
+        else:
+            self.poisoned_transform = copy.deepcopy(self.transform)
+        self.poisoned_transform.transforms.insert(self.poisoned_transform_index, AddImageNet100Trigger(self.pattern, self.weight))
+
+        # Modify labels
+        if self.target_transform is None:
+            self.poisoned_target_transform = Compose([])
+        else:
+            self.poisoned_target_transform = copy.deepcopy(self.target_transform)
+        self.poisoned_target_transform.transforms.insert(self.poisoned_target_transform_index, ModifyTarget(self.y_target))
+
+    def __getitem__(self, index):
+        if self.train:
+            data = self.get_train_data()
+        else:
+            data = self.get_validation_data()
+
+        img, target = data[index]
+
+        # Convert to PIL Image
+        img = Image.fromarray(img)
+
+        if index in self.poisoned_set:
+            img = self.poisoned_transform(img)
+            target = self.poisoned_target_transform(target)
+
+        return img, target'''
+class PoisonedImageNet100(ImageNet100):
+    def __init__(self,
+                 benign_dataset,
+                 y_target,
+                 poisoned_rate,
+                 pattern,
+                 weight,
+                 poisoned_transform_index,
+                 poisoned_target_transform_index):
+        super(PoisonedImageNet100, self).__init__(
+            benign_dataset.root,
+            benign_dataset.train,
+            benign_dataset.transform,
+            benign_dataset.target_transform
+            )
+        total_num = len(benign_dataset)
+        poisoned_num = int(total_num * poisoned_rate)
+        assert poisoned_num >= 0, 'poisoned_num should be greater than or equal to zero.'
+        tmp_list = list(range(total_num))
+        random.shuffle(tmp_list)
+        self.poisoned_set = frozenset(tmp_list[:poisoned_num])
+
+        # Add trigger to images
+        if self.transform is None:
+            self.poisoned_transform = Compose([])
+        else:
+            self.poisoned_transform = copy.deepcopy(self.transform)
+        self.poisoned_transform.transforms.insert(poisoned_transform_index, AddImageNet100Trigger(pattern, weight))
+
+        # Modify labels
+        if self.target_transform is None:
+            self.poisoned_target_transform = Compose([])
+        else:
+            self.poisoned_target_transform = copy.deepcopy(self.target_transform)
+        self.poisoned_target_transform.transforms.insert(poisoned_target_transform_index, ModifyTarget(y_target))
+
+    def __getitem__(self, index):
+        '''img, target = super(PoisonedImageNet100, self).__getitem__(index)
+
+        if index in self.poisoned_set:
+            img = self.poisoned_transform(img)
+            target = self.poisoned_target_transform(target)
+        else:
+            if self.transform is not None:
+                img = self.transform(img)
+
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+
+        return img, target'''
+        img, target = self.data[index], int(self.targets[index])
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if index in self.poisoned_set:
+            img = self.poisoned_transform(img)
+            target = self.poisoned_target_transform(target)
+        else:
+            if self.transform is not None:
+                img = self.transform(img)
+
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+
+        return img, target
 def CreatePoisonedDataset(benign_dataset, y_target, poisoned_rate, pattern, weight, poisoned_transform_index, poisoned_target_transform_index):
     class_name = type(benign_dataset)
     if class_name == DatasetFolder:
@@ -384,6 +602,8 @@ def CreatePoisonedDataset(benign_dataset, y_target, poisoned_rate, pattern, weig
         return PoisonedMNIST(benign_dataset, y_target, poisoned_rate, pattern, weight, poisoned_transform_index, poisoned_target_transform_index)
     elif class_name == CIFAR10:
         return PoisonedCIFAR10(benign_dataset, y_target, poisoned_rate, pattern, weight, poisoned_transform_index, poisoned_target_transform_index)
+    elif class_name == ImageNet100:
+        return PoisonedImageNet100(benign_dataset, y_target, poisoned_rate, pattern, weight, poisoned_transform_index, poisoned_target_transform_index)
     else:
         raise NotImplementedError
 

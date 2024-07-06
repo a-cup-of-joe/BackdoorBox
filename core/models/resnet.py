@@ -108,3 +108,22 @@ def ResNet(num, num_classes=10):
         return _ResNet(Bottleneck, [3,8,36,3], num_classes)
     else:
         raise NotImplementedError
+      
+import torch.nn as nn
+from torchvision.models import resnet18, resnet34
+
+def resnet18_cifar():
+    model = resnet18(pretrained=True)
+    # 修改首层卷积
+    model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+    # 删除池化层
+    model.maxpool = nn.Identity()
+    # 修改全连接层
+    model.fc = nn.Linear(512, 10)
+    return model
+
+def resnet34_imagenet100():
+    model = resnet34(pretrained=True)
+    # 修改全连接层
+    model.fc = nn.Linear(512, 100)
+    return model

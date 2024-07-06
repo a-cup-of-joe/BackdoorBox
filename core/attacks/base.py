@@ -10,14 +10,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision.datasets import DatasetFolder, MNIST, CIFAR10
-
+from classimagenet100 import ImageNet100
 from ..utils import Log
 
 
 support_list = (
     DatasetFolder,
     MNIST,
-    CIFAR10
+    CIFAR10,
+    ImageNet100
 )
 
 

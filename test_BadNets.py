@@ -4,16 +4,17 @@ This is the test code of poisoned training under BadNets.
 
 
 import os.path as osp
-
+import os
 import cv2
 import torch
 import torch.nn as nn
 import torchvision
 from torchvision.datasets import DatasetFolder
 from torchvision.transforms import Compose, ToTensor, RandomHorizontalFlip, ToPILImage, Resize
-
+from torchvision import transforms, datasets
 import core
-
+from classimagenet100 import ImageNet100
+from torch.utils.data import DataLoader
 
 # ========== Set global settings ==========
 global_seed = 666
@@ -21,10 +22,10 @@ deterministic = True
 torch.manual_seed(global_seed)
 # CUDA_SELECTED_DEVICES = '0,3'
 CUDA_SELECTED_DEVICES = '0'
-datasets_root_dir = '../datasets'
+# datasets_root_dir = '../datasets'
+datasets_root_dir = '/home/yuanweijie/workspace/backdoorattack/BackdoorBox/core/attacks/ImageNet100'
 
-
-# ========== BaselineMNISTNetwork_MNIST_BadNets ==========
+'''# ========== BaselineMNISTNetwork_MNIST_BadNets ==========
 dataset = torchvision.datasets.MNIST
 
 transform_train = Compose([
@@ -61,7 +62,7 @@ schedule = {
     'CUDA_SELECTED_DEVICES': CUDA_SELECTED_DEVICES,
 
     'benign_training': False,
-    'batch_size': 1024,
+    'batch_size': 128,
     'num_workers': 4,
 
     'lr': 0.1,
@@ -81,31 +82,56 @@ schedule = {
 }
 badnets.train(schedule)
 badnets.test(schedule)
+'''
 
+# ========== resnet34_imagenet100_BadNets ==========
+# dataset = ImageNet100('/home/yuanweijie/workspace/backdoorattack/BackdoorBox/core/attacks/ImageNet100')
+normalize = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225]
+)
 
-# ========== ResNet-18_CIFAR-10_BadNets ==========
-dataset = torchvision.datasets.CIFAR10
-
-transform_train = Compose([
-    RandomHorizontalFlip(),
-    ToTensor()
+# 定义 transform_train
+transform_train = transforms.Compose([
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    normalize,  # 注意这里没有括号
 ])
-trainset = dataset(datasets_root_dir, train=True, transform=transform_train, download=True)
 
-transform_test = Compose([
-    ToTensor()
+# 定义 transform_test
+transform_test = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    normalize,  # 同样没有括号
 ])
-testset = dataset(datasets_root_dir, train=False, transform=transform_test, download=True)
+# trainset = dataset(datasets_root_dir, train=True, transform=transform_train, download=True)
+# testset = dataset(datasets_root_dir, train=False, transform=transform_test, download=True)
+'''train_set = ImageNet100(
+    root=os.path.join(datasets_root_dir, 'train.X1'),
+    transform=transform_train
+)
+
+test_set = ImageNet100(
+    root=os.path.join(datasets_root_dir, 'val.X'),
+    transform=transform_test
+)'''
+
+train_set = ImageNet100(root='/home/yuanweijie/workspace/backdoorattack/BackdoorBox/core/attacks/ImageNet100',train=True,transform=transform_train)
+test_set = ImageNet100(root='/home/yuanweijie/workspace/backdoorattack/BackdoorBox/core/attacks/ImageNet100',train=False,transform=transform_test)
+
+
 
 pattern = torch.zeros((32, 32), dtype=torch.uint8)
-pattern[-3:, -3:] = 255
+pattern[-7:, -7:] = 255
 weight = torch.zeros((32, 32), dtype=torch.float32)
-weight[-3:, -3:] = 1.0
+weight[-7:, -7:] = 1.0
 
 badnets = core.BadNets(
-    train_dataset=trainset,
-    test_dataset=testset,
-    model=core.models.ResNet(18),
+    train_dataset=train_set,
+    test_dataset=test_set,
+    model=core.models.resnet34_imagenet100(),
     loss=nn.CrossEntropyLoss(),
     y_target=1,
     poisoned_rate=0.05,
@@ -121,14 +147,14 @@ schedule = {
     'CUDA_SELECTED_DEVICES': CUDA_SELECTED_DEVICES,
 
     'benign_training': False,
-    'batch_size': 1024,
+    'batch_size': 256,
     'num_workers': 4,
 
-    'lr': 0.1,
+    'lr': 0.2,
     'momentum': 0.9,
-    'weight_decay': 5e-4,
+    'weight_decay': 1e-4,
     'gamma': 0.1,
-    'schedule': [150, 180],
+    'schedule': [120, 160],
 
     'epochs': 200,
 
@@ -137,13 +163,13 @@ schedule = {
     'save_epoch_interval': 10,
 
     'save_dir': 'experiments',
-    'experiment_name': 'ResNet-18_CIFAR-10_BadNets'
+    'experiment_name': 'resnet34_imagenet100_BadNets'
 }
 badnets.train(schedule)
 badnets.test(schedule)
 
 
-# ========== ResNet-18_GTSRB_BadNets ==========
+'''# ========== ResNet-18_GTSRB_BadNets ==========
 transform_train = Compose([
     ToPILImage(),
     Resize((32, 32)),
@@ -197,7 +223,7 @@ schedule = {
     'CUDA_SELECTED_DEVICES': CUDA_SELECTED_DEVICES,
 
     'benign_training': False,
-    'batch_size': 1024,
+    'batch_size': 128,
     'num_workers': 4,
 
     'lr': 0.01,
@@ -216,4 +242,4 @@ schedule = {
     'experiment_name': 'ResNet-18_GTSRB_BadNets'
 }
 badnets.train(schedule)
-badnets.test(schedule)
+badnets.test(schedule)'''
